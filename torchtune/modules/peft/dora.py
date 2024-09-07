@@ -73,6 +73,7 @@ class DoRALinear(nn.Module, AdapterModule):
         self.lora_b = nn.Linear(in_features=rank, out_features=out_dim, bias=False)
         self.magnitude = nn.Parameter(torch.empty(out_dim))
         self.initialize_parameters()
+        #self.initialize_dora_magnitude()
 
     def initialize_parameters(self):
         # Initialize as in
@@ -140,8 +141,12 @@ class DoRALinear(nn.Module, AdapterModule):
         magnitude = self.magnitude
         weight = self.weight.to(x.dtype)
         weight_norm = self._get_weight_norm(weight, lora_weight.detach())
+        print("weight norm: ", weight_norm)
         weight_norm = weight_norm.detach()
-        mag_norm_scale = (magnitude / weight_norm).view(1, -1)
+        intermediate = (magnitude / weight_norm).view(1, -1)
+        print("intermediate: ", intermediate)
+
+        mag_norm_scale = ((magnitude / weight_norm).view(1, -1) - 1) if torch.nonzero(magnitude).numel() else 0
 
         dora_out = (
             mag_norm_scale - 1
