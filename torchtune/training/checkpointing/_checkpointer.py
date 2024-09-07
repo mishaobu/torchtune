@@ -390,7 +390,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             checkpoint_paths.append(checkpoint_path)
         return sorted(checkpoint_paths)
 
-    def load_checkpoint(self) -> Dict[str, Any]:
+    def load_checkpoint(self, requires_conversion = True) -> Dict[str, Any]:
         """
         Load HF checkpoint from file.
 
@@ -458,7 +458,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 dim=self._config["hidden_size"],
                 tie_word_embeddings=self._config["tie_word_embeddings"],
             )
-        else:
+        elif requires_conversion:
             converted_state_dict[training.MODEL_KEY] = convert_weights.hf_to_tune(
                 merged_state_dict,
                 num_heads=self._config["num_attention_heads"],
@@ -466,6 +466,8 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 dim=self._config["hidden_size"],
                 head_dim=self._config.get("head_dim", None),
             )
+        elif not requires_conversion:
+            converted_state_dict[training.MODEL_KEY] = merged_state_dict
 
         if self._adapter_checkpoint:
             adapter_state_dict = safe_torch_load(self._adapter_checkpoint)
@@ -577,25 +579,25 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 logger.warning(
                     "Saving Phi-3 Mini adapter weights to PEFT format is not supported, saving to torchtune format instead"
                 )
-            else:
-                state_dict[
-                    training.ADAPTER_KEY
-                ] = convert_weights.tune_to_peft_adapter_weights(
-                    state_dict[training.ADAPTER_KEY],
-                    num_heads=self._config["num_attention_heads"],
-                    num_kv_heads=self._config["num_key_value_heads"],
-                    dim=self._config["hidden_size"],
-                    head_dim=self._config.get("head_dim", None),
-                )
-                peft_output_path = Path.joinpath(
-                    self._output_dir, "adapter_model"
-                ).with_suffix(".bin")
-                torch.save(state_dict[training.ADAPTER_KEY], peft_output_path)
-                logger.info(
-                    "Adapter checkpoint of size "
-                    f"{os.path.getsize(output_path) / 1000**3:.2f} GB "
-                    f"saved to {peft_output_path}"
-                )
+            # else:
+            #     state_dict[
+            #         training.ADAPTER_KEY
+            #     ] = convert_weights.tune_to_peft_adapter_weights(
+            #         state_dict[training.ADAPTER_KEY],
+            #         num_heads=self._config["num_attention_heads"],
+            #         num_kv_heads=self._config["num_key_value_heads"],
+            #         dim=self._config["hidden_size"],
+            #         head_dim=self._config.get("head_dim", None),
+            #     )
+            #     peft_output_path = Path.joinpath(
+            #         self._output_dir, "adapter_model"
+            #     ).with_suffix(".bin")
+            #     torch.save(state_dict[training.ADAPTER_KEY], peft_output_path)
+            #     logger.info(
+            #         "Adapter checkpoint of size "
+            #         f"{os.path.getsize(output_path) / 1000**3:.2f} GB "
+            #         f"saved to {peft_output_path}"
+            #     )
         elif adapter_only:
             raise ValueError(
                 "Adapter checkpoint not found in state_dict. Please ensure that the state_dict contains adapter weights."
