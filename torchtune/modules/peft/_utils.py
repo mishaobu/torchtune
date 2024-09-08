@@ -378,5 +378,9 @@ def load_dora_magnitudes(model: nn.Module) -> None:
     dora_parents = {
         n: p for n, p in model.named_modules() if hasattr(p, "adapter_params")
     }
-    sd = {f"{n}.magnitude": p.magnitude for n, p in dora_parents.items()}
+    sd = {}
+    for n, p in dora_parents.items():
+        if p.magnitude.nonzero().numel() == 0:
+            p.initialize_dora_magnitude()
+        sd[f"{n}.magnitude"] = p.magnitude
     model.load_state_dict(sd, strict=False, assign=True)

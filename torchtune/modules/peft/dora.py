@@ -114,6 +114,7 @@ class DoRALinear(nn.Module, AdapterModule):
         return adapter_params
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # DISABLED QUANT, DISABLED DROPOUT
         """
         Args:
             x (torch.Tensor): input tensor with shape ``(..., in_dim)``
@@ -121,15 +122,7 @@ class DoRALinear(nn.Module, AdapterModule):
         Returns:
             Tensor: output tensor with shape ``(..., out_dim)``
         """
-        if self._quantize_base:
-            base_out = linear_nf4(input=x, weight=self.weight)
-        else:
-            base_out = F.linear(x, self.weight)
-        if self.disabled:
-            return base_out
-
-        x = self.dropout(x)
-
+        base_out = F.linear(x, self.weight)
         lora_out = self.lora_b(self.lora_a(x))
         # Can't use raw matmul since FSDP hooks are attached to __call__
         # Instead follow the approach in https://github.com/huggingface/peft/pull/1806
@@ -137,17 +130,12 @@ class DoRALinear(nn.Module, AdapterModule):
             self.lora_a.weight.shape[1], device=self.lora_a.weight.device, dtype=x.dtype
         )
         lora_weight = self.lora_b(self.lora_a(x_eye)).T
-        magnitude = self.magnitude
-        weight = self.weight.to(x.dtype)
-        weight_norm = self._get_weight_norm(weight, lora_weight.detach())
-        weight_norm = weight_norm.detach()
-        mag_norm_scale = (magnitude / weight_norm).view(1, -1)
+        weight_norm = self._get_weight_norm(self.weight, lora_weight.detach()).detach()
+        mag_norm_scale = (self.magnitude / weight_norm).view(1, -1)
 
-        dora_out = (
-            mag_norm_scale - 1
-        ) * base_out + mag_norm_scale * lora_out * self.scaling
+        return mag_norm_scale * (base_out + lora_out * self.scaling)
 
-        return dora_out + base_out
+
 
 
 def _lora_a_init_params(x: nn.Linear) -> None:
