@@ -5,10 +5,11 @@
 # LICENSE file in the root directory of this source tree.
 
 from typing import Callable, List, Optional
-
+from tqdm import tqdm
 import torch
 from torchtune.modules import TransformerDecoder
 
+import time
 
 def multinomial_sample_one(probs: torch.Tensor) -> torch.Tensor:
     """Samples from a multinomial distribution."""
@@ -99,6 +100,8 @@ def generate(
     Returns:
         List[List[int]]: collection of lists of generated tokens
     """
+    print("STARTING GENERATION")
+    start_time = time.time()
     prompt = prompt.view(1, -1) if prompt.ndim == 1 else prompt
     # convert stop tokens to tensor for easy matching
     stop_tokens = (
@@ -126,6 +129,8 @@ def generate(
         temperature=temperature,
         top_k=top_k,
     )
+    time_to_first_token = time.time() - start_time
+    print("TIME TO FIRST TOKEN: ", time_to_first_token)
     generated_tokens = torch.cat([generated_tokens, tokens], dim=-1)
 
     # stop early if we reach a stop token in every seq
@@ -139,7 +144,7 @@ def generate(
     curr_pos = prompt_length
     # if key value caches are enabled, we can incrementally decode
     incremental_decoding = model.caches_are_enabled()
-    for _ in range(max_generated_tokens - 1):
+    for _ in tqdm(range(max_generated_tokens - 1)):
         # update stop_token_mask if we reached a stop token in a previous step
         # by appending the logical not of stop_token_reached to the end of the mask
         # reshaped to be bsz first
