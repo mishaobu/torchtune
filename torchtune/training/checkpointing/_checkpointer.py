@@ -484,6 +484,7 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
         epoch: int,
         intermediate_checkpoint: bool = False,
         adapter_only: bool = False,
+        hf_only: bool = False, 
     ) -> None:
         """
         Save HF checkpoint to file. If ``intermediate_checkpoint`` is True, an additional
@@ -563,41 +564,42 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 )
 
         if training.ADAPTER_KEY in state_dict:
-            # Save torchtune format adapter weights even if we save PEFT format
-            # This way we can resume no matter what (and memory footprint of adapter weights is small)
-            output_path = Path.joinpath(
-                self._output_dir, f"adapter_{epoch}"
-            ).with_suffix(".pt")
-            torch.save(state_dict[training.ADAPTER_KEY], output_path)
-            logger.info(
-                "Adapter checkpoint of size "
-                f"{os.path.getsize(output_path) / 1000**3:.2f} GB "
-                f"saved to {output_path}"
-            )
-
-            if self._model_type == ModelType.PHI3_MINI:
-                logger.warning(
-                    "Saving Phi-3 Mini adapter weights to PEFT format is not supported, saving to torchtune format instead"
+            if hf_only:
+                state_dict[
+                    training.ADAPTER_KEY
+                ] = convert_weights.tune_to_peft_adapter_weights(
+                    state_dict[training.ADAPTER_KEY],
+                    num_heads=self._config["num_attention_heads"],
+                    num_kv_heads=self._config["num_key_value_heads"],
+                    dim=self._config["hidden_size"],
+                    head_dim=self._config.get("head_dim", None),
                 )
-            # else:
-            #     state_dict[
-            #         training.ADAPTER_KEY
-            #     ] = convert_weights.tune_to_peft_adapter_weights(
-            #         state_dict[training.ADAPTER_KEY],
-            #         num_heads=self._config["num_attention_heads"],
-            #         num_kv_heads=self._config["num_key_value_heads"],
-            #         dim=self._config["hidden_size"],
-            #         head_dim=self._config.get("head_dim", None),
-            #     )
-            #     peft_output_path = Path.joinpath(
-            #         self._output_dir, "adapter_model"
-            #     ).with_suffix(".bin")
-            #     torch.save(state_dict[training.ADAPTER_KEY], peft_output_path)
-            #     logger.info(
-            #         "Adapter checkpoint of size "
-            #         f"{os.path.getsize(output_path) / 1000**3:.2f} GB "
-            #         f"saved to {peft_output_path}"
-            #     )
+                peft_output_path = Path.joinpath(
+                    self._output_dir, "adapter_model"
+                ).with_suffix(".bin")
+                torch.save(state_dict[training.ADAPTER_KEY], peft_output_path)
+                logger.info(
+                    "Adapter checkpoint of size "
+                    f"{os.path.getsize(peft_output_path) / 1000**3:.2f} GB "
+                    f"saved to {peft_output_path}"
+                )
+            else:
+                # Save torchtune format adapter weights if we don't save peft format
+                # This way we can resume no matter what (and memory footprint of adapter weights is small)
+                output_path = Path.joinpath(
+                    self._output_dir, f"adapter_{epoch}"
+                ).with_suffix(".pt")
+                torch.save(state_dict[training.ADAPTER_KEY], output_path)
+                logger.info(
+                    "Adapter checkpoint of size "
+                    f"{os.path.getsize(output_path) / 1000**3:.2f} GB "
+                    f"saved to {output_path}"
+                )
+
+                if self._model_type == ModelType.PHI3_MINI:
+                    logger.warning(
+                        "Saving Phi-3 Mini adapter weights to PEFT format is not supported, saving to torchtune format instead"
+                    )
         elif adapter_only:
             raise ValueError(
                 "Adapter checkpoint not found in state_dict. Please ensure that the state_dict contains adapter weights."
