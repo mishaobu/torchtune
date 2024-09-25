@@ -89,6 +89,7 @@ def lora_llama3_1_8b(
     lora_alpha: float = 16,
     use_dora: bool = False,
     quantize_base: bool = False,
+    lora_dropout: float = 0.05
 ) -> TransformerDecoder:
     """
     Builder for creating a Llama3.1 8B model with LoRA enabled.
@@ -128,7 +129,7 @@ def lora_llama3_1_8b(
         rope_base=500000.0,
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
-        lora_dropout=0.05,
+        lora_dropout=lora_dropout,
         use_dora=use_dora,
         quantize_base=quantize_base,
     )
